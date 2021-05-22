@@ -38,10 +38,7 @@ impl AudioPlayer {
             // self.stream.play();
             let sink = rodio::Sink::try_new(&self.handle.borrow()).unwrap();
             let file = std::fs::File::open("test_audio/audio.mp3").unwrap();
-            self.source = Some(Arc::new(RefCell::new(
-                rodio::Decoder::new(BufReader::new(file)).unwrap(),
-            )));
-            sink.append(self.source);
+            sink.append(rodio::Decoder::new(BufReader::new(file)).unwrap());
             // let beep1 = self.handle.borrow().play_once(self.master_buff).unwrap();
             //beep1.set_volume(0.2);
 
