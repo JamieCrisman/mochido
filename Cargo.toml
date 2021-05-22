@@ -1,0 +1,12 @@
+[package]
+name = "mochido"
+version = "0.1.0"
+authors = ["Jamie Crisman <Jamie@longest.voyage>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+iced = {version= "0.3.0", features = ["smol"]}
+rodio = "0.14.0"
+tokio = {version="1.6.0", features=["full"]}
