@@ -6,9 +6,9 @@ use std::io::{Cursor, ErrorKind, Read};
 use std::path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time;
-//use std::thread;
-//use std::time::Duration;
+use std::time::Duration;
 
 pub trait AudioContext {
     fn device(&self) -> &rodio::OutputStreamHandle;
@@ -184,16 +184,16 @@ impl Source {
         let period_mus = self.state.query_interval.as_secs() as usize * 1_000_000
             + self.state.query_interval.subsec_micros() as usize;
 
-        if self.state.repeat {
-            let sound = rodio::Decoder::new(cursor)?
-                .repeat_infinite()
-                .speed(self.state.speed)
-                .fade_in(self.state.fade_in)
-                .periodic_access(self.state.query_interval, move |_| {
-                    let _ = counter.fetch_add(period_mus, Ordering::SeqCst);
-                });
-            self.sink.append(sound);
-        }
+        //if self.state.repeat {
+        let sound = rodio::Decoder::new(cursor)?
+            .repeat_infinite()
+            .speed(self.state.speed)
+            .fade_in(self.state.fade_in)
+            .periodic_access(self.state.query_interval, move |_| {
+                let _ = counter.fetch_add(period_mus, Ordering::SeqCst);
+            });
+        self.sink.append(sound);
+        //}
 
         Ok(())
     }
@@ -271,7 +271,7 @@ impl AudioPlayer {
             println!("sure");
         };
         source.resume();
-
+        //thread::sleep(Duration::from_secs(2));
         AudioPlayer {
             source: Box::new(source),
         }
