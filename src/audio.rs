@@ -219,15 +219,19 @@ impl Source {
     }
 
     fn resume(&self) {
+        if self.stopped() {
+            self.play_later().unwrap();
+        }
         self.sink.play()
     }
 
-    fn stop(&mut self, audio_context: Box<dyn AudioContext>) -> Result<(), rodio::PlayError> {
+    fn stop(&mut self, audio_context: &dyn AudioContext) -> Result<(), rodio::PlayError> {
         let volume = self.volume();
         let device = audio_context.device();
         self.sink = rodio::Sink::try_new(&device)?;
         self.state.play_time.store(0, Ordering::SeqCst);
         self.set_volume(volume);
+        self.play_later()?;
         Ok(())
     }
 
@@ -267,10 +271,10 @@ pub struct AudioPlayer {
 impl AudioPlayer {
     pub fn new(ctx: &dyn AudioContext) -> Self {
         let source = Source::new(ctx, path::Path::new("test_audio/audio.mp3")).unwrap();
-        if source.play_later().is_ok() {
-            println!("sure");
-        };
-        source.resume();
+        //if source.play_later().is_ok() {
+        //  println!("sure");
+        //};
+        //source.resume();
         //thread::sleep(Duration::from_secs(2));
         AudioPlayer {
             source: Box::new(source),
@@ -283,5 +287,9 @@ impl AudioPlayer {
         } else {
             self.source.pause();
         }
+    }
+
+    pub fn stop(&mut self, ctx: &dyn AudioContext) {
+        self.source.stop(ctx).unwrap();
     }
 }

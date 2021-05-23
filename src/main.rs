@@ -55,7 +55,7 @@ impl Application for Mochido {
     }
 
     fn title(&self) -> String {
-        String::from("Stopwatch - Iced")
+        String::from("Mochido")
     }
 
     fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Message> {
@@ -81,6 +81,9 @@ impl Application for Mochido {
             },
             Message::Reset => {
                 self.duration = Duration::default();
+                self.audio.stop(self.audio_ctx.as_ref());
+                self.audio.play();
+                self.state = State::Idle;
             }
         }
 
