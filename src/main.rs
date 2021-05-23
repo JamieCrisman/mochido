@@ -5,7 +5,7 @@ use iced::{
     Element, HorizontalAlignment, Length, Row, Settings, Subscription, Text,
 };
 
-use audio::AudioPlayer;
+use audio::{AudioContext, AudioPlayer};
 use std::time::{Duration, Instant};
 
 pub fn main() -> iced::Result {
@@ -18,6 +18,7 @@ struct Mochido {
     toggle: button::State,
     reset: button::State,
     audio: AudioPlayer,
+    audio_ctx: Box<dyn AudioContext>,
 }
 
 enum State {
@@ -38,13 +39,16 @@ impl Application for Mochido {
     type Flags = ();
 
     fn new(_flags: ()) -> (Mochido, Command<Message>) {
+        let audio_ctx: Box<dyn AudioContext> = Box::new(audio::RodioAudioContext::new().unwrap());
+        let audio = AudioPlayer::new(audio_ctx.as_ref());
         (
             Mochido {
                 duration: Duration::default(),
                 state: State::Idle,
                 toggle: button::State::new(),
                 reset: button::State::new(),
-                audio: AudioPlayer::new(),
+                audio,
+                audio_ctx,
             },
             Command::none(),
         )
