@@ -1,14 +1,14 @@
-use rodio::*;
+use rodio::Source;
 
-use std::cell::RefCell;
+// use std::cell::RefCell;
 //use std::error::Error;
 use std::io::{Cursor, ErrorKind, Read};
 use std::path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time;
-use std::time::Duration;
+// use std::thread;
+use std::time::{self, Duration};
+// use std::time::Duration;
 
 pub trait AudioContext {
     fn device(&self) -> &rodio::OutputStreamHandle;
@@ -98,17 +98,30 @@ pub struct SourceState {
     speed: f32,
     query_interval: time::Duration,
     play_time: Arc<AtomicUsize>,
+    total_length: Option<time::Duration>,
 }
 
 impl SourceState {
     pub fn new(cursor: Cursor<SoundData>) -> Self {
+        let mut total_length = Some(time::Duration::from_secs(0));
+        if let Some(d) = rodio::Decoder::new(cursor.clone()).ok() {
+            total_length = d.total_duration();
+            // final attempt, this may be wrong though depending on the file type
+            if total_length.is_none() {
+                let ch = d.channels() as u64;
+                let sr = d.sample_rate() as u64;
+                let len = d.into_iter().count() as u64 * 1000 / (ch * sr);
+                total_length = Some(Duration::from_millis(len))
+            }
+        }
         SourceState {
             data: cursor,
             repeat: false,
             fade_in: time::Duration::from_millis(0),
             speed: 1.0,
-            query_interval: time::Duration::from_millis(100),
+            query_interval: time::Duration::from_millis(50),
             play_time: Arc::new(AtomicUsize::new(0)),
+            total_length,
         }
     }
 
@@ -136,21 +149,25 @@ impl SourceState {
     pub fn set_query_interval(&mut self, t: time::Duration) {
         self.query_interval = t;
     }
+
+    pub fn total_length(&self) -> Option<time::Duration> {
+        self.total_length
+    }
 }
 
-pub struct Source {
+pub struct AudioSource {
     sink: rodio::Sink,
     state: SourceState,
 }
 
-impl Source {
+impl AudioSource {
     pub fn new<P: AsRef<path::Path>>(
         audio_context: &dyn AudioContext,
         path: P,
     ) -> Result<Self, std::io::Error> {
         let path = path.as_ref();
         let data = SoundData::new(path)?;
-        Source::from_data(audio_context, data)
+        AudioSource::from_data(audio_context, data)
     }
 
     pub fn from_data(
@@ -171,14 +188,13 @@ impl Source {
             ));
         }
         let cursor = Cursor::new(data);
-        Ok(Source {
+        Ok(AudioSource {
             sink: sink.unwrap(),
             state: SourceState::new(cursor),
         })
     }
 
     fn play_later(&self) -> Result<(), rodio::decoder::DecoderError> {
-        use rodio::Source;
         let cursor = self.state.data.clone();
         let counter = self.state.play_time.clone();
         let period_mus = self.state.query_interval.as_secs() as usize * 1_000_000
@@ -262,15 +278,19 @@ impl Source {
     fn set_query_interval(&mut self, t: time::Duration) {
         self.state.set_query_interval(t)
     }
+
+    fn total_time(&self) -> Option<time::Duration> {
+        self.state.total_length()
+    }
 }
 
 pub struct AudioPlayer {
-    source: Box<Source>,
+    source: Box<AudioSource>,
 }
 
 impl AudioPlayer {
     pub fn new(ctx: &dyn AudioContext) -> Self {
-        let source = Source::new(ctx, path::Path::new("test_audio/audio.mp3")).unwrap();
+        let source = AudioSource::new(ctx, path::Path::new("test_audio/audio.mp3")).unwrap();
         //if source.play_later().is_ok() {
         //  println!("sure");
         //};
@@ -291,5 +311,13 @@ impl AudioPlayer {
 
     pub fn stop(&mut self, ctx: &dyn AudioContext) {
         self.source.stop(ctx).unwrap();
+    }
+
+    pub fn total_time(&self) -> Option<time::Duration> {
+        self.source.total_time()
+    }
+
+    pub fn play_time(&self) -> time::Duration {
+        self.source.elapsed()
     }
 }

@@ -101,17 +101,33 @@ impl Application for Mochido {
         const MINUTE: u64 = 60;
         const HOUR: u64 = 60 * MINUTE;
 
-        let seconds = self.duration.as_secs();
-
-        let duration = Text::new(format!(
-            "{:0>2}:{:0>2}:{:0>2}.{:0>2}",
-            seconds / HOUR,
-            (seconds % HOUR) / MINUTE,
-            seconds % MINUTE,
-            self.duration.subsec_millis() / 10,
-        ))
-        .size(40);
-
+        let playtime = self.audio.play_time();
+        let duration = if let Some(total_seconds) = self.audio.total_time() {
+            let tsec = total_seconds.as_secs();
+            let seconds = playtime.as_secs();
+            Text::new(format!(
+                "{:0>2}:{:0>2}:{:0>2}.{:0>2} of {:0>2}:{:0>2}:{:0>2}.{:0>2}",
+                seconds / HOUR,
+                (seconds % HOUR) / MINUTE,
+                seconds % MINUTE,
+                playtime.subsec_millis() / 10,
+                tsec / HOUR,
+                (tsec % HOUR) / MINUTE,
+                tsec % MINUTE,
+                total_seconds.subsec_millis() / 10,
+            ))
+            .size(40)
+        } else {
+            let seconds = playtime.as_secs();
+            Text::new(format!(
+                "{:0>2}:{:0>2}:{:0>2}.{:0>2}",
+                seconds / HOUR,
+                (seconds % HOUR) / MINUTE,
+                seconds % MINUTE,
+                playtime.subsec_millis() / 10,
+            ))
+            .size(40)
+        };
         let button = |state, label, style| {
             Button::new(
                 state,
