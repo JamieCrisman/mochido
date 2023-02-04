@@ -1,4 +1,4 @@
-on: [push, workflow_run]
+on: [push]
 
 name: CI
 
