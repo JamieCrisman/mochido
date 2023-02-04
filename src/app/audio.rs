@@ -1,14 +1,10 @@
 use rodio::Source;
 
-// use std::cell::RefCell;
-//use std::error::Error;
 use std::io::{Cursor, ErrorKind, Read};
 use std::path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-// use std::thread;
+use std::sync::Arc;
 use std::time::{self, Duration};
-// use std::time::Duration;
 
 pub trait AudioContext {
     fn device(&self) -> &rodio::OutputStreamHandle;
@@ -95,9 +91,10 @@ pub struct SourceState {
     data: Cursor<SoundData>,
     repeat: bool,
     fade_in: time::Duration,
-    speed: f32,
+    pub speed: f32,
     query_interval: time::Duration,
-    play_time: Arc<AtomicUsize>,
+    pub play_time: Arc<AtomicUsize>,
+    // pub total_play_time: usize,
     total_length: Option<time::Duration>,
 }
 
@@ -117,7 +114,7 @@ impl SourceState {
         SourceState {
             data: cursor,
             repeat: false,
-            fade_in: time::Duration::from_millis(0),
+            fade_in: time::Duration::from_millis(10),
             speed: 1.0,
             query_interval: time::Duration::from_millis(50),
             play_time: Arc::new(AtomicUsize::new(0)),
@@ -156,8 +153,9 @@ impl SourceState {
 }
 
 pub struct AudioSource {
-    sink: rodio::Sink,
-    state: SourceState,
+    pub sink: rodio::Sink,
+    pub cursor_len: usize,
+    pub state: SourceState,
 }
 
 impl AudioSource {
@@ -187,29 +185,39 @@ impl AudioSource {
                 "Couldn't create the sink",
             ));
         }
+        let cursor_len = data.0.as_ref().len();
         let cursor = Cursor::new(data);
         Ok(AudioSource {
             sink: sink.unwrap(),
             state: SourceState::new(cursor),
+            cursor_len,
         })
     }
 
-    fn play_later(&self) -> Result<(), rodio::decoder::DecoderError> {
+    fn play_later(&mut self, start: bool) -> Result<(), rodio::decoder::DecoderError> {
+        let was_playing = self.playing() || start;
         let cursor = self.state.data.clone();
-        let counter = self.state.play_time.clone();
         let period_mus = self.state.query_interval.as_secs() as usize * 1_000_000
             + self.state.query_interval.subsec_micros() as usize;
+        let total_periods = self.state.total_length.unwrap().as_secs_f32()
+            / self.state.query_interval.as_secs_f32();
 
-        //if self.state.repeat {
+        let counter = self.state.play_time.clone();
+        counter.store(
+            ((period_mus as f32 * total_periods)
+                * (cursor.position() as f32 / self.cursor_len as f32)) as usize,
+            Ordering::SeqCst,
+        );
         let sound = rodio::Decoder::new(cursor)?
-            .repeat_infinite()
             .speed(self.state.speed)
             .fade_in(self.state.fade_in)
             .periodic_access(self.state.query_interval, move |_| {
                 let _ = counter.fetch_add(period_mus, Ordering::SeqCst);
             });
         self.sink.append(sound);
-        //}
+        if !was_playing {
+            self.sink.pause();
+        }
 
         Ok(())
     }
@@ -222,8 +230,9 @@ impl AudioSource {
         self.state.set_fade_in(dur);
     }
 
-    fn set_speed(&mut self, ratio: f32) {
+    pub fn set_speed(&mut self, ratio: f32) {
         self.state.set_speed(ratio);
+        self.sink.set_speed(ratio);
     }
 
     fn repeat(&self) -> bool {
@@ -234,20 +243,29 @@ impl AudioSource {
         self.sink.pause()
     }
 
-    fn resume(&self) {
+    fn resume(&mut self) {
         if self.stopped() {
-            self.play_later().unwrap();
+            self.play_later(true).unwrap();
         }
         self.sink.play()
     }
 
-    fn stop(&mut self, audio_context: &dyn AudioContext) -> Result<(), rodio::PlayError> {
+    fn stop(
+        &mut self,
+        audio_context: &dyn AudioContext,
+        clear_time: bool,
+    ) -> Result<(), rodio::PlayError> {
         let volume = self.volume();
         let device = audio_context.device();
         self.sink = rodio::Sink::try_new(&device)?;
-        self.state.play_time.store(0, Ordering::SeqCst);
+        self.sink.set_speed(self.state.speed);
+        if clear_time {
+            self.state.play_time.store(0, Ordering::SeqCst);
+        }
         self.set_volume(volume);
-        self.play_later()?;
+        if clear_time {
+            self.play_later(false)?;
+        }
         Ok(())
     }
 
@@ -285,39 +303,80 @@ impl AudioSource {
 }
 
 pub struct AudioPlayer {
-    source: Box<AudioSource>,
+    audio_ctx: Box<dyn AudioContext>,
+    pub source: Option<Box<AudioSource>>,
 }
 
 impl AudioPlayer {
-    pub fn new(ctx: &dyn AudioContext) -> Self {
-        let source = AudioSource::new(ctx, path::Path::new("test_audio/audio.mp3")).unwrap();
+    pub fn new() -> Self {
+        // let source = AudioSource::new(ctx, path::Path::new("test_audio/audio.mp3")).unwrap();
         //if source.play_later().is_ok() {
         //  println!("sure");
         //};
         //source.resume();
         //thread::sleep(Duration::from_secs(2));
+        //
+        let audio_ctx: Box<dyn AudioContext> = Box::new(RodioAudioContext::new().unwrap());
         AudioPlayer {
-            source: Box::new(source),
+            audio_ctx,
+            source: None,
         }
     }
 
-    pub fn play(&mut self) {
-        if !self.source.playing() {
-            self.source.resume();
-        } else {
-            self.source.pause();
+    pub fn load(&mut self, path: &str) {
+        self.source = Some(Box::new(
+            AudioSource::new(self.audio_ctx.as_ref(), path::Path::new(path)).unwrap(),
+        ));
+    }
+
+    pub fn is_playing(&self) -> bool {
+        self.source.is_some() && self.source.as_ref().unwrap().playing()
+    }
+
+    pub fn toggle_play(&mut self) {
+        if let Some(s) = self.source.as_mut() {
+            if !s.playing() {
+                s.resume();
+            } else {
+                s.pause();
+            }
         }
     }
 
     pub fn stop(&mut self, ctx: &dyn AudioContext) {
-        self.source.stop(ctx).unwrap();
+        if let Some(s) = self.source.as_mut() {
+            s.stop(ctx, true).unwrap();
+        }
     }
 
     pub fn total_time(&self) -> Option<time::Duration> {
-        self.source.total_time()
+        if let Some(s) = self.source.as_ref() {
+            s.total_time()
+        } else {
+            None
+        }
+    }
+
+    pub fn scrub_to(&mut self, point: f32) {
+        if let Some(s) = self.source.as_mut() {
+            // println!("speed {}", s.state.speed);
+            s.state.data.set_position(
+                (((s.cursor_len - 1) as f32 * point) as usize)
+                    .try_into()
+                    .unwrap(),
+            );
+            // TODO: this should probably be some sort of clear, not "stop"
+            let was_playing = s.playing();
+            s.stop(self.audio_ctx.as_mut(), false).unwrap();
+            s.play_later(was_playing).ok();
+        }
     }
 
     pub fn play_time(&self) -> time::Duration {
-        self.source.elapsed()
+        if let Some(s) = self.source.as_ref() {
+            s.elapsed()
+        } else {
+            time::Duration::ZERO
+        }
     }
 }
