@@ -101,7 +101,7 @@ pub struct SourceState {
 impl SourceState {
     pub fn new(cursor: Cursor<SoundData>) -> Self {
         let mut total_length = Some(time::Duration::from_secs(0));
-        if let Some(d) = rodio::Decoder::new(cursor.clone()).ok() {
+        if let Ok(d) = rodio::Decoder::new(cursor.clone()) {
             total_length = d.total_duration();
             // final attempt, this may be wrong though depending on the file type
             if total_length.is_none() {
@@ -257,7 +257,7 @@ impl AudioSource {
     ) -> Result<(), rodio::PlayError> {
         let volume = self.volume();
         let device = audio_context.device();
-        self.sink = rodio::Sink::try_new(&device)?;
+        self.sink = rodio::Sink::try_new(device)?;
         self.sink.set_speed(self.state.speed);
         if clear_time {
             self.state.play_time.store(0, Ordering::SeqCst);

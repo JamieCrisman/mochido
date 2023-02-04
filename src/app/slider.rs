@@ -756,9 +756,9 @@ impl<'a> Slider<'a> {
             }
         }
 
-        let slider_response = response.clone();
+        let _slider_response = response.clone();
 
-        let value_response = if self.show_value {
+        let _value_response = if self.show_value {
             let position_range = self.position_range(&response.rect);
             let value_response = self.value_ui(ui, position_range);
             if value_response.gained_focus()
@@ -954,7 +954,7 @@ fn logaritmic_zero_cutoff(min: f64, max: f64) -> f64 {
     };
 
     let cutoff = min_magnitude / (min_magnitude + max_magnitude);
-    assert!(0.0 <= cutoff && cutoff <= 1.0);
+    assert!((0.0..=1.0).contains(&cutoff));
     cutoff
 }
 

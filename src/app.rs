@@ -100,7 +100,7 @@ impl eframe::App for TemplateApp {
             ui.heading("Side Panel");
 
             if let Some(pp) = picked_path {
-                if pp.len() > 0 {
+                if !pp.is_empty() {
                     ui.horizontal(|ui| {
                         ui.label("file: ");
                         ui.text_edit_singleline(pp);
@@ -169,7 +169,7 @@ impl eframe::App for TemplateApp {
                     // TODO: sort
                 }
                 if ui.button("Prev").clicked() {
-                    if marks.len() == 0 {
+                    if marks.is_empty() {
                         *cur_pos = 0.0;
                     }
                     // if we're playing we'll have a small offset to jump past something if it's
@@ -186,13 +186,11 @@ impl eframe::App for TemplateApp {
                     if ui.button("Pause").clicked() {
                         audio.toggle_play();
                     }
-                } else {
-                    if ui.button("Play").clicked() {
-                        audio.toggle_play();
-                    }
+                } else if ui.button("Play").clicked() {
+                    audio.toggle_play();
                 }
                 if ui.button("Next").clicked() {
-                    if marks.len() == 0 {
+                    if marks.is_empty() {
                         // TODO: or whatever max should be
                         *cur_pos = 1.0;
                     }
@@ -206,7 +204,7 @@ impl eframe::App for TemplateApp {
                 }
             });
 
-            if marks.len() > 0 {
+            if !marks.is_empty() {
                 // ui.spacing_mut().item_spacing.y = 20.0;
                 ui.with_layout(
                     egui::Layout::top_down_justified(egui::Align::Center),
