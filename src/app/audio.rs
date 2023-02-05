@@ -1,10 +1,12 @@
 use rodio::Source;
 
+use std::error::Error;
 use std::io::{Cursor, ErrorKind, Read};
 use std::path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{self, Duration};
+use anyhow::Result;
 
 pub trait AudioContext {
     fn device(&self) -> &rodio::OutputStreamHandle;
@@ -323,10 +325,11 @@ impl AudioPlayer {
         }
     }
 
-    pub fn load(&mut self, path: &str) {
+    pub fn load(&mut self, path: &str) -> Result<()> {
         self.source = Some(Box::new(
-            AudioSource::new(self.audio_ctx.as_ref(), path::Path::new(path)).unwrap(),
+            AudioSource::new(self.audio_ctx.as_ref(), path::Path::new(path))?,
         ));
+        Ok(())
     }
 
     pub fn is_playing(&self) -> bool {

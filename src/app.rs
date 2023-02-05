@@ -45,7 +45,8 @@ impl TemplateApp {
         if let Some(storage) = cc.storage {
             let mut r: Self = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
             if let Some(path) = r.picked_path.as_ref() {
-                r.audio.load(path.as_str());
+                // try to load previous file
+                _ = r.audio.load(path.as_str());
             }
             return r;
         }
