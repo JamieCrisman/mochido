@@ -1,3 +1,5 @@
+use egui::Key;
+
 use self::audio::AudioPlayer;
 
 mod audio;
@@ -7,7 +9,7 @@ mod slider;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
-    // this how you opt-out of serialization of a member
+    #[serde(skip)]
     playback_speed: f32,
 
     #[serde(skip)]
@@ -86,7 +88,10 @@ impl eframe::App for TemplateApp {
                     if ui.button("File").clicked() {
                         if let Some(path) = rfd::FileDialog::new().pick_file() {
                             *picked_path = Some(path.display().to_string());
-                            audio.load(path.display().to_string().as_str());
+                            match audio.load(path.display().to_string().as_str()) {
+                                Ok(_) => {},
+                                Err(_) => {},
+                            }
                         }
                     }
                     if ui.button("Quit").clicked() {
@@ -111,14 +116,15 @@ impl eframe::App for TemplateApp {
 
             if let Some(source) = audio.source.as_mut() {
                 ui.add(
-                    egui::Slider::from_get_set(0.1..=3.0, |v: Option<f64>| {
+                    egui::Slider::from_get_set(0.5..=3.0, |v: Option<f64>| {
                         if let Some(v) = v {
                             *playback_speed = eframe::emath::Numeric::from_f64(v);
                             source.set_speed(*playback_speed);
                         }
                         eframe::emath::Numeric::to_f64(*playback_speed)
                     })
-                    .text("Playback"),
+                    .text("Playback")
+                    .logarithmic(true),
                 );
 
                 ui.with_layout(
@@ -143,6 +149,39 @@ impl eframe::App for TemplateApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            if ctx.input().key_pressed(Key::Space) {
+                audio.toggle_play();
+            }
+            if ctx.input().key_pressed(Key::ArrowLeft) {
+                if marks.is_empty() {
+                    *cur_pos = 0.0;
+                }
+                // if we're playing we'll have a small offset to jump past something if it's
+                // "too close"
+                let pos = *cur_pos + if audio.is_playing() { -0.05 } else { 0.0 };
+                if let Some(val) = marks.iter().rev().find(|i| *i < &pos) {
+                    *cur_pos = *val;
+                } else {
+                    *cur_pos = 0.0;
+                }
+                audio.scrub_to(*cur_pos);
+            }
+            if ctx.input().key_pressed(Key::ArrowRight) {
+                if marks.is_empty() {
+                    // TODO: or whatever max should be
+                    *cur_pos = 1.0;
+                }
+                if let Some(val) = marks.iter().find(|i| *i > cur_pos) {
+                    *cur_pos = *val;
+                } else {
+                    // TODO: or whatever max should be
+                    *cur_pos = 1.0;
+                }
+                audio.scrub_to(*cur_pos);
+            }
+            // if ctx.input(|i| i.key_pressed(Key::Space)) {
+            //     audio.toggle_play();
+            // }
             // The central panel the region left after adding TopPanel's and SidePanel's
             ui.style_mut().spacing.slider_width = ui.max_rect().width();
             ui.vertical_centered_justified(|ui| {
