@@ -24,6 +24,14 @@ fn set(get_set_value: &mut GetSetValue<'_>, value: f64) {
     (get_set_value)(Some(value));
 }
 
+/// Combined into one function (rather than two) to make it easier
+/// for the borrow checker.
+type GetPOIValue<'a> = Box<dyn 'a + Fn() -> Vec<f32>>;
+
+fn get_poi(get_poi_value: &GetPOIValue<'_>) -> Vec<f32> {
+    (get_poi_value)()
+}
+
 // ----------------------------------------------------------------------------
 
 #[derive(Clone)]
@@ -69,6 +77,7 @@ pub enum SliderOrientation {
 #[must_use = "You should put this widget in an ui with `ui.add(widget);`"]
 pub struct Slider<'a> {
     get_set_value: GetSetValue<'a>,
+    get_poi: GetPOIValue<'a>,
     range: RangeInclusive<f64>,
     spec: SliderSpec,
     clamp_to_range: bool,
@@ -88,28 +97,30 @@ pub struct Slider<'a> {
 
 impl<'a> Slider<'a> {
     /// Creates a new horizontal slider.
-    pub fn new<Num: emath::Numeric>(value: &'a mut Num, range: RangeInclusive<Num>) -> Self {
-        let range_f64 = range.start().to_f64()..=range.end().to_f64();
-        let slf = Self::from_get_set(range_f64, move |v: Option<f64>| {
-            if let Some(v) = v {
-                *value = Num::from_f64(v);
-            }
-            value.to_f64()
-        });
+    // pub fn new<Num: emath::Numeric>(value: &'a mut Num, range: RangeInclusive<Num>) -> Self {
+    //     let range_f64 = range.start().to_f64()..=range.end().to_f64();
+    //     let slf = Self::from_get_set(range_f64, move |v: Option<f64>| {
+    //         if let Some(v) = v {
+    //             *value = Num::from_f64(v);
+    //         }
+    //         value.to_f64()
+    //     });
 
-        if Num::INTEGRAL {
-            slf.integer()
-        } else {
-            slf
-        }
-    }
+    //     if Num::INTEGRAL {
+    //         slf.integer()
+    //     } else {
+    //         slf
+    //     }
+    // }
 
     pub fn from_get_set(
         range: RangeInclusive<f64>,
+        get_poi: impl 'a + Fn() -> Vec<f32>,
         get_set_value: impl 'a + FnMut(Option<f64>) -> f64,
     ) -> Self {
         Self {
             get_set_value: Box::new(get_set_value),
+            get_poi: Box::new(get_poi),
             range,
             spec: SliderSpec {
                 logarithmic: false,
@@ -465,6 +476,20 @@ impl<'a> Slider<'a> {
         }
     }
 
+    fn get_poi(&self) -> Vec<f32> {
+        let values = get_poi(&self.get_poi);
+        if self.clamp_to_range {
+            let start = *self.range.start() as f32;
+            let end = *self.range.end() as f32;
+            values
+                .iter()
+                .map(|v| v.clamp(start.min(end), start.max(end)))
+                .collect()
+        } else {
+            values
+        }
+    }
+
     fn set_value(&mut self, mut value: f64) {
         if self.clamp_to_range {
             let start = *self.range.start();
@@ -599,8 +624,6 @@ impl<'a> Slider<'a> {
             let rail_radius = ui.painter().round_to_pixel(self.rail_radius_limit(rect));
             let rail_rect = self.rail_rect(rect, rail_radius);
 
-            let position_1d = self.position_from_value(value, position_range);
-
             let visuals = ui.style().interact(response);
             ui.painter().add(epaint::RectShape {
                 rect: rail_rect,
@@ -613,7 +636,35 @@ impl<'a> Slider<'a> {
                 // stroke: ui.visuals().widgets.inactive.bg_stroke,
             });
 
+            let position_1d = self.position_from_value(value, position_range.clone());
             let center = self.marker_center(position_1d, &rail_rect);
+
+            let marks = self.get_poi();
+            for mark in marks.iter() {
+                let position_1d = self.position_from_value(*mark as f64, position_range.clone());
+
+                let visuals = ui.style().interact(response);
+                // ui.painter().add(epaint::RectShape {
+                //     rect: rail_rect,
+                //     rounding: ui.visuals().widgets.inactive.rounding,
+                //     fill: ui.visuals().widgets.inactive.bg_fill,
+                //     // fill: visuals.bg_fill,
+                //     // fill: ui.visuals().extreme_bg_color,
+                //     stroke: Default::default(),
+                //     // stroke: visuals.bg_stroke,
+                //     // stroke: ui.visuals().widgets.inactive.bg_stroke,
+                // });
+
+                let center = self.marker_center(position_1d, &rail_rect);
+
+                ui.painter().add(epaint::CircleShape {
+                    center,
+                    // radius: self.handle_radius(rect) + visuals.expansion,
+                    radius: self.handle_smaller_radius(rect),
+                    fill: visuals.bg_fill,
+                    stroke: ui.visuals().widgets.noninteractive.fg_stroke,
+                });
+            }
 
             ui.painter().add(epaint::CircleShape {
                 center,
@@ -669,6 +720,13 @@ impl<'a> Slider<'a> {
             SliderOrientation::Vertical => rect.width(),
         };
         limit / 2.5
+    }
+    fn handle_smaller_radius(&self, rect: &Rect) -> f32 {
+        let limit = match self.orientation {
+            SliderOrientation::Horizontal => rect.height(),
+            SliderOrientation::Vertical => rect.width(),
+        };
+        limit / 3.5
     }
 
     fn rail_radius_limit(&self, rect: &Rect) -> f32 {
@@ -957,4 +1015,3 @@ fn logaritmic_zero_cutoff(min: f64, max: f64) -> f64 {
     assert!((0.0..=1.0).contains(&cutoff));
     cutoff
 }
-

@@ -89,8 +89,8 @@ impl eframe::App for TemplateApp {
                         if let Some(path) = rfd::FileDialog::new().pick_file() {
                             *picked_path = Some(path.display().to_string());
                             match audio.load(path.display().to_string().as_str()) {
-                                Ok(_) => {},
-                                Err(_) => {},
+                                Ok(_) => {}
+                                Err(_) => {}
                             }
                         }
                     }
@@ -187,13 +187,20 @@ impl eframe::App for TemplateApp {
             ui.vertical_centered_justified(|ui| {
                 // let slider = egui::Slider::new(cur_pos, 0.0..=1.0).show_value(true);
                 // let slider = slider::Slider::new(cur_pos, 0.0..=1.0);
-                let slider = slider::Slider::from_get_set(0.0..=1.0, |v: Option<f64>| {
-                    if let Some(v) = v {
-                        *cur_pos = eframe::emath::Numeric::from_f64(v);
-                        audio.scrub_to(*cur_pos);
-                    }
-                    eframe::emath::Numeric::to_f64(*cur_pos)
-                });
+                let slider = slider::Slider::from_get_set(
+                    0.0..=1.0,
+                    || {
+                        // hmmm
+                        marks.to_vec()
+                    },
+                    |v: Option<f64>| {
+                        if let Some(v) = v {
+                            *cur_pos = eframe::emath::Numeric::from_f64(v);
+                            audio.scrub_to(*cur_pos);
+                        }
+                        eframe::emath::Numeric::to_f64(*cur_pos)
+                    },
+                );
                 // ui.add(egui::Slider::new(cur_pos, 0.0..=1.0).show_value(true));
                 ui.add(slider);
             });
