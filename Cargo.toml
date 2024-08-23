@@ -21,6 +21,7 @@ serde = { version = "1", features = ["derive"] }
 rfd = "0.11.0"
 rodio = { version = "0.16.0", features = ["symphonia-flac", "symphonia-isomp4", "symphonia-wav", "symphonia-aac"] }
 anyhow = "1.0.68"
+pvoc = "0.1.7"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

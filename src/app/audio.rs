@@ -1,12 +1,14 @@
+use pvoc::{PhaseVocoder, Bin};
 use rodio::Source;
 
+use anyhow::Result;
+use std::borrow::Borrow;
 use std::error::Error;
 use std::io::{Cursor, ErrorKind, Read};
 use std::path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{self, Duration};
-use anyhow::Result;
 
 pub trait AudioContext {
     fn device(&self) -> &rodio::OutputStreamHandle;
@@ -199,6 +201,7 @@ impl AudioSource {
     fn play_later(&mut self, start: bool) -> Result<(), rodio::decoder::DecoderError> {
         let was_playing = self.playing() || start;
         let cursor = self.state.data.clone();
+
         let period_mus = self.state.query_interval.as_secs() as usize * 1_000_000
             + self.state.query_interval.subsec_micros() as usize;
         let total_periods = self.state.total_length.unwrap().as_secs_f32()
@@ -213,9 +216,26 @@ impl AudioSource {
         let sound = rodio::Decoder::new(cursor)?
             .speed(self.state.speed)
             .fade_in(self.state.fade_in)
-            .periodic_access(self.state.query_interval, move |_| {
+            .periodic_access(self.state.query_interval, move |a| {
                 let _ = counter.fetch_add(period_mus, Ordering::SeqCst);
             });
+        let sample_rate = sound.sample_rate() as f64;
+        let channels = sound.channels() as usize;
+        let frame_size = 256;
+        let time_res = 4;
+        // let mut pvoc = PhaseVocoder::new(channels, sample_rate, frame_size, time_res);
+        // pvoc.process(
+        //     input,
+        //     output,
+        //     |channels: usize, bins: usize, input: &[Vec<Bin>], output: &mut [Vec<Bin>]| {
+        //         for i in 0..channels {
+        //             for j in 0..bins {
+        //                 output[i][j] = input[i][j]; // change this!
+        //             }
+        //         }
+        //     },
+        // );
+
         self.sink.append(sound);
         if !was_playing {
             self.sink.pause();
@@ -326,9 +346,10 @@ impl AudioPlayer {
     }
 
     pub fn load(&mut self, path: &str) -> Result<()> {
-        self.source = Some(Box::new(
-            AudioSource::new(self.audio_ctx.as_ref(), path::Path::new(path))?,
-        ));
+        self.source = Some(Box::new(AudioSource::new(
+            self.audio_ctx.as_ref(),
+            path::Path::new(path),
+        )?));
         Ok(())
     }
 
